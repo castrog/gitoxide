@@ -22,6 +22,8 @@ use crate::tree::{
 /// * does not do rename tracking but attempts to reduce allocations to zero (so performance is mostly determined
 ///   by the delegate implementation which should be as specific as possible. Rename tracking can be computed on top of the changes
 ///   received by the `delegate`.
+/// * entries that are identical in both trees are skipped without calling the `delegate`, so it doesn't see path
+///   components for them either.
 /// * cycle checking is not performed, but can be performed in the delegate which can return
 ///   [`std::ops::ControlFlow::Break`] to stop the traversal.
 ///
@@ -78,6 +80,11 @@ where
             (Some(lhs), Some(rhs)) => {
                 use std::cmp::Ordering::*;
                 let (lhs, rhs) = (lhs?, rhs?);
+                // Most entries are typically unchanged. Skip them early as there is nothing to report or track.
+                if lhs == rhs {
+                    pop_path = false;
+                    continue;
+                }
                 match compare(&lhs, &rhs) {
                     Equal => handle_lhs_and_rhs_with_equal_filenames(
                         lhs,
