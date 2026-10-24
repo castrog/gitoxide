@@ -23,6 +23,10 @@ path = "examples/clone.rs"
 required-features = ["blocking-network-client"]
 
 [[example]]
+name = "gix-history-bench"
+path = "examples/gix-history-bench.rs"
+
+[[example]]
 name = "gix-notes-bench"
 path = "examples/gix-notes-bench.rs"
 required-features = ["notes"]
