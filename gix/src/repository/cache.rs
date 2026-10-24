@@ -28,6 +28,25 @@ impl crate::Repository {
         }
     }
 
+    /// Use a pack delta cache of at most `bytes`, unless `core.deltaBaseCacheLimit` or
+    /// `gitoxide.core.defaultPackCacheMemoryLimit` is set.
+    ///
+    /// * The default cache holds 64 objects. Walks that need delta bases again only after many lookups,
+    ///   like diffing each commit with its parents, are much faster with a memory-capped cache.
+    ///   Git defaults to `96 * 1024 * 1024` bytes.
+    /// * Sets `core.deltaBaseCacheLimit`, so clones of this instance use the same cache.
+    /// * Each instance has its own cache: threads with one clone each may use `bytes` each.
+    /// * Requires the `max-performance` feature, without which no pack cache is used.
+    pub fn pack_cache_size_if_unset(&mut self, bytes: usize) -> crate::Result<()> {
+        if self.config.pack_cache_bytes.is_some() || self.config.static_pack_cache_limit_bytes.is_some() {
+            return Ok(());
+        }
+        let mut config = self.config_snapshot_mut();
+        config.set_value(&crate::config::tree::Core::DELTA_BASE_CACHE_LIMIT, bytes.to_string())?;
+        config.commit()?;
+        Ok(())
+    }
+
     /// Return the amount of bytes the object cache [should be set to](Self::object_cache_size_if_unset) to perform
     /// diffs between trees who are similar to `index` in a typical source code repository.
     ///

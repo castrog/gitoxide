@@ -4,7 +4,6 @@ use gix::{
     Result,
     blame::Start,
     bstr::BStr,
-    config::tree,
     error::{ResultExt, message},
     utils::AsBStr,
 };
@@ -16,12 +15,7 @@ pub fn blame_file(
     out: impl std::io::Write,
     err: Option<&mut dyn std::io::Write>,
 ) -> Result<()> {
-    {
-        let mut config = repo.config_snapshot_mut();
-        if config.string(tree::Core::DELTA_BASE_CACHE_LIMIT).is_none() {
-            config.set_value(&tree::Core::DELTA_BASE_CACHE_LIMIT, "100m")?;
-        }
-    }
+    repo.pack_cache_size_if_unset(100 * 1024 * 1024)?;
     let index = repo.index_or_empty()?;
     repo.object_cache_size_if_unset(repo.compute_object_cache_size_for_tree_diffs(&index));
 

@@ -36,6 +36,52 @@ fn commit_auto_rollback() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn pack_cache_size_if_unset() -> TestResult {
+    let mut repo = named_repo("make_basic_repo.sh")?;
+    assert_eq!(repo.config_snapshot().integer("core.deltaBaseCacheLimit"), None);
+    repo.pack_cache_size_if_unset(1024)?;
+    assert_eq!(
+        repo.config_snapshot().integer("core.deltaBaseCacheLimit"),
+        Some(1024),
+        "the memory-capped pack cache is configured"
+    );
+    assert_eq!(
+        repo.clone().config_snapshot().integer("core.deltaBaseCacheLimit"),
+        Some(1024),
+        "clones set up their caches from the same configuration"
+    );
+
+    repo.pack_cache_size_if_unset(2048)?;
+    assert_eq!(
+        repo.config_snapshot().integer("core.deltaBaseCacheLimit"),
+        Some(1024),
+        "a configured pack cache is kept"
+    );
+
+    for (key, value) in [
+        ("core.deltaBaseCacheLimit", "0"),
+        ("gitoxide.core.defaultPackCacheMemoryLimit", "4096"),
+    ] {
+        let mut repo = gix::open_opts(
+            repo.git_dir(),
+            gix::open::Options::isolated().config_overrides([format!("{key}={value}")]),
+        )?;
+        repo.pack_cache_size_if_unset(1024)?;
+        assert_eq!(
+            repo.config_snapshot().string(key).map(|v| v.to_string()),
+            Some(value.to_owned()),
+            "{key} is kept"
+        );
+        assert_eq!(
+            repo.config_snapshot().integer("core.deltaBaseCacheLimit"),
+            (key == "core.deltaBaseCacheLimit").then_some(0),
+            "{key} chooses the pack cache instead"
+        );
+    }
+    Ok(())
+}
+
 mod trusted_path {
     use crate::util::named_repo;
     use gix_testtools::TestResult;
