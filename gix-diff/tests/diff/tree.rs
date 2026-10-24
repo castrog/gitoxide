@@ -46,6 +46,67 @@ fn cancellation_vetoes_sibling_retryable_failures() {
     );
 }
 
+#[test]
+fn unchanged_entries_are_skipped_without_involving_the_delegate() -> gix_testtools::TestResult {
+    use gix_diff::tree::{Visit, visit};
+    use gix_object::{
+        WriteTo,
+        bstr::{BStr, BString},
+        tree::{Entry, EntryKind},
+    };
+
+    /// Records every path component it is given.
+    #[derive(Default)]
+    struct Components(Vec<BString>);
+    impl Visit for Components {
+        fn pop_front_tracked_path_and_set_current(&mut self) {}
+        fn push_back_tracked_path_component(&mut self, component: &BStr) {
+            self.0.push(component.to_owned());
+        }
+        fn push_path_component(&mut self, component: &BStr) {
+            self.0.push(component.to_owned());
+        }
+        fn pop_path_component(&mut self) {}
+        fn visit(&mut self, _change: visit::Change) -> visit::Action {
+            visit::Action::Continue(())
+        }
+    }
+
+    let hash_kind = gix_testtools::object_hash();
+    let id = |byte: u8| gix_hash::ObjectId::from_bytes_or_panic(&vec![byte; hash_kind.len_in_bytes()]);
+    // `a` and the tree `c` are unchanged, only `b` differs.
+    let tree = |b_id| -> std::io::Result<Vec<u8>> {
+        let entries = [
+            ("a", EntryKind::Blob, id(1)),
+            ("b", EntryKind::Blob, b_id),
+            ("c", EntryKind::Tree, id(3)),
+        ]
+        .map(|(filename, kind, oid)| Entry {
+            mode: kind.into(),
+            filename: filename.into(),
+            oid,
+        });
+        let mut buf = Vec::new();
+        gix_object::Tree {
+            entries: entries.into(),
+        }
+        .write_to(&mut buf)?;
+        Ok(buf)
+    };
+    let (lhs, rhs) = (tree(id(2))?, tree(id(4))?);
+
+    let mut delegate = Components::default();
+    gix_diff::tree(
+        gix_object::TreeRefIter::from_bytes(&lhs, hash_kind),
+        gix_object::TreeRefIter::from_bytes(&rhs, hash_kind),
+        gix_diff::tree::State::default(),
+        gix_object::find::Never,
+        &mut delegate,
+    )?;
+    assert_eq!(delegate.0, ["b"], "only the changed entry is passed to the delegate");
+    Ok(())
+}
+
 mod changes {
     mod to_obtain_tree {
         use crate::Result;
